@@ -28,16 +28,33 @@ case "$1" in
   up)
     $COMPOSE up -d
     ;;
+  createdb)
+    # cria o database se não existir (via container Docker)
+    SQL_CHECK="SELECT 1 FROM pg_database WHERE datname='posto_combustivel';"
+    if $COMPOSE ps -q db > /dev/null 2>&1; then
+      EXISTS=$(docker-compose exec -T db psql -U postgres -d postgres -tAc "$SQL_CHECK" | tr -d '[:space:]' || true)
+      if [ "$EXISTS" = "1" ]; then
+        echo "Database 'posto_combustivel' já existe."
+      else
+        echo "Criando database 'posto_combustivel'..."
+        docker-compose exec -T db psql -U postgres -d postgres -c "CREATE DATABASE posto_combustivel;"
+      fi
+    else
+      echo "Container 'db' não está rodando. Execute './run.sh up' primeiro."
+      exit 1
+    fi
+    ;;
   down)
     $COMPOSE down -v
     ;;
   apply)
-    # Try to run inside container first, fallback to local psql
+    # Aplicar o script SQL via container Docker (requer serviço 'db' rodando)
     if $COMPOSE ps -q db > /dev/null 2>&1; then
-      docker-compose exec -T db psql -U postgres -d posto_combustivel -f /docker-entrypoint-initdb.d/pratica-3.sql || true
+      docker-compose exec -T db psql -U postgres -d posto_combustivel -f /docker-entrypoint-initdb.d/pratica-3.sql
+    else
+      echo "Container 'db' não está rodando. Execute './run.sh up' e tente novamente."
+      exit 1
     fi
-    # fallback
-    psql "$DB_URL" -f "$DIR/sql/pratica-3.sql" || true
     ;;
   psql)
     psql "$DB_URL"
